@@ -1,0 +1,32 @@
+{
+  "name": "uniswap-v3-ai-agent",
+  "version": "1.0.0",
+  "description": "![Uniswap V3](https://img.shields.io/badge/Uniswap-V3-FF007A?style=for-the-badge&logo=uniswap) ![n8n](https://img.shields.io/badge/n8n-Workflow-EA4B71?style=for-the-badge) ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-412991?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)",
+  "main": "api-config.js",
+  "directories": {
+    "doc": "docs",
+    "example": "examples"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anthonysurfermx/uniswap-v3-ai-agent.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/anthonysurfermx/uniswap-v3-ai-agent/issues"
+  },
+  "homepage": "https://github.com/anthonysurfermx/uniswap-v3-ai-agent#readme",
+  "dependencies": {
+    "axios": "^1.11.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "helmet": "^8.1.0",
+    "morgan": "^1.10.1"
+  }
+}

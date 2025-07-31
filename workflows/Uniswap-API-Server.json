@@ -1,0 +1,49 @@
+{
+  "name": "Uniswap V3 API Server",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "api/positions",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "positions-webhook",
+      "name": "Positions API",
+      "type": "n8n-nodes-base.webhook",
+      "position": [200, 300],
+      "webhookId": "uniswap-positions-api"
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET", 
+        "path": "api/portfolio",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "portfolio-webhook",
+      "name": "Portfolio API",
+      "type": "n8n-nodes-base.webhook",
+      "position": [200, 500],
+      "webhookId": "uniswap-portfolio-api"
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "api/alerts", 
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "alerts-webhook",
+      "name": "Alerts API",
+      "type": "n8n-nodes-base.webhook", 
+      "position": [200, 700],
+      "webhookId": "uniswap-alerts-api"
+    }
+  ],
+  "connections": {},
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
