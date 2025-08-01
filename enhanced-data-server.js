@@ -4,7 +4,7 @@ const axios = require('axios');
 const app = express();
 
 app.use(cors({
-  origin: ['http://localhost:8080', 'https://uni-pulse-dash-qt03gdt6t-anthonysurfermxs-projects.vercel.app', 'http://localhost:5173', 'http://localhost:8080', 'http://localhost:8080'],
+  origin: ['http://localhost:8080', 'http://localhost:5173'],
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type']
 }));
@@ -65,46 +65,62 @@ app.get('/api/positions', async (req, res) => {
   }
 });
 
-app.listen(5679, () => {
-  console.log('🦄 Improved API Server on port 5679');
+app.listen(5680, () => {
+  console.log('🦄 Improved API Server on port 5680');
 });
 
-// Add portfolio endpoint
-app.get('/api/portfolio', async (req, res) => {
-  try {
-    const { wallet } = req.query;
-    
-    if (!wallet) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing wallet parameter'
-      });
-    }
+// Cache stats endpoint
+app.get('/api/cache/stats', (req, res) => {
+  res.json({
+    entries: 0,
+    memoryUsage: process.memoryUsage(),
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
 
-    console.log('📊 Portfolio request for:', wallet);
+// Price history endpoint  
+app.get('/api/price-history', (req, res) => {
+  const days = parseInt(req.query.days) || 7;
+  const data = [];
+  
+  for(let i = days; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    const basePrice = 2300;
+    const price = basePrice + (Math.random() - 0.5) * 200;
     
-    // Mock portfolio data for now
-    const portfolioData = {
-      success: true,
-      summary: {
-        totalValueLocked: "8450.23",
-        totalUnclaimedFees: "127.50", 
-        weightedApr: "15.4",
-        positionsCount: 2,
-        inRangeCount: 1,
-        outOfRangeCount: 1,
-        healthScore: "75.0"
-      },
-      timestamp: new Date().toISOString()
-    };
-    
-    res.json(portfolioData);
-    
-  } catch (error) {
-    console.error('Portfolio error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Server error'
+    data.push({
+      date: date.toISOString().split('T')[0],
+      price: Math.round(price * 100) / 100,
+      volume: Math.round(Math.random() * 50000000)
     });
   }
+  
+  res.json({
+    success: true,
+    data: data,
+    count: data.length,
+    period: `${days} days`
+  });
+});
+
+// Market data endpoint
+app.get('/api/market-data', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      ethereum: { price: 2387.45, change24h: 3.24 },
+      defi: { totalValueLocked: 45600000000 },
+      uniswapV3: { 
+        tvl: 4200000000,
+        volume24h: 1240000000,
+        topPools: [
+          { pair: 'ETH/USDC', tvl: '850M', apr: 12.4 },
+          { pair: 'ETH/USDT', tvl: '420M', apr: 8.7 }
+        ]
+      }
+    },
+    timestamp: new Date().toISOString()
+  });
 });
