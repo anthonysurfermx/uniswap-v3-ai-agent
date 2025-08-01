@@ -4,7 +4,7 @@ const axios = require('axios');
 const app = express();
 
 app.use(cors({
-  origin: ['http://localhost:8080', 'https://uni-pulse-dash-qt03gdt6t-anthonysurfermxs-projects.vercel.app', 'http://localhost:5173', 'http://localhost:8080', 'http://localhost:8080'],
+  origin: ['http://localhost:8080', 'https://uni-pulse-dash-rnrsge3ar-anthonysurfermxs-projects.vercel.app', 'http://localhost:5173', 'http://localhost:8080', 'http://localhost:8080'],
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type']
 }));
