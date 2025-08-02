@@ -39,7 +39,7 @@ app.get('/', (req, res) => {
   console.log('Health check requested');
   res.json({
     message: "Uniswap V3 AI Agent API",
-    version: "3.0.0",
+    version: "3.1.0",
     endpoints: [
       "/health",
       "/api/positions/:walletAddress",
@@ -57,6 +57,8 @@ app.get('/health', (req, res) => {
 
 // Helper function to analyze wallet
 async function analyzeWalletData(walletAddress) {
+  console.log(`🔍 Querying The Graph for wallet: ${walletAddress}`);
+  
   const query = `
     query getPositions($owner: String!) {
       positions(where: { owner: $owner }) {
@@ -65,10 +67,12 @@ async function analyzeWalletData(walletAddress) {
         pool {
           id
           token0 {
+            id
             symbol
             decimals
           }
           token1 {
+            id
             symbol
             decimals
           }
@@ -94,21 +98,56 @@ async function analyzeWalletData(walletAddress) {
     }
   `;
 
-  const response = await axios.post(UNISWAP_V3_SUBGRAPH, {
-    query,
-    variables: { owner: walletAddress.toLowerCase() }
-  });
+  try {
+    console.log('📡 Sending query to The Graph...');
+    const response = await axios.post(
+      UNISWAP_V3_SUBGRAPH,
+      {
+        query,
+        variables: { owner: walletAddress.toLowerCase() }
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      }
+    );
 
-  return response.data.data.positions || [];
+    console.log('✅ Response from The Graph received');
+    
+    // Check for errors in the GraphQL response
+    if (response.data.errors) {
+      console.error('❌ GraphQL errors:', response.data.errors);
+      throw new Error('GraphQL query failed: ' + JSON.stringify(response.data.errors));
+    }
+
+    return response.data.data.positions || [];
+  } catch (error) {
+    console.error('❌ Error querying The Graph:', error.message);
+    if (error.response) {
+      console.error('Response data:', error.response.data);
+      console.error('Response status:', error.response.status);
+    }
+    throw error;
+  }
 }
 
 // Analyze wallet - Main endpoint
 app.get('/api/analyze/:walletAddress', async (req, res) => {
   const { walletAddress } = req.params;
-  console.log(`Analyzing wallet: ${walletAddress}`);
+  console.log(`🔍 Analyzing wallet: ${walletAddress}`);
+  
+  // Basic address validation
+  if (!walletAddress || !walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid wallet address format'
+    });
+  }
   
   try {
     const positions = await analyzeWalletData(walletAddress);
+    console.log(`📊 Found ${positions.length} positions`);
 
     if (!positions || positions.length === 0) {
       return res.json({
@@ -116,6 +155,8 @@ app.get('/api/analyze/:walletAddress', async (req, res) => {
         data: {
           wallet: walletAddress,
           hasPositions: false,
+          positionsCount: 0,
+          positions: [],
           message: "No Uniswap V3 positions found for this wallet"
         }
       });
@@ -125,12 +166,13 @@ app.get('/api/analyze/:walletAddress', async (req, res) => {
     const formattedPositions = positions.map(pos => {
       const fees0 = parseFloat(pos.collectedFeesToken0) || 0;
       const fees1 = parseFloat(pos.collectedFeesToken1) || 0;
-      const totalFees = fees0 + fees1; // Simplified calculation
+      const totalFees = fees0 + fees1;
       
       return {
         id: pos.id,
-        pool: `${pos.pool.token0.symbol}/${pos.pool.token1.symbol}`,
-        feeTier: pos.pool.feeTier / 10000 + '%',
+        pool: `${pos.pool.token0.symbol || 'Unknown'}/${pos.pool.token1.symbol || 'Unknown'}`,
+        poolAddress: pos.pool.id,
+        feeTier: (pos.pool.feeTier / 10000).toFixed(2) + '%',
         liquidity: pos.liquidity,
         range: {
           lower: pos.tickLower.tickIdx,
@@ -144,27 +186,42 @@ app.get('/api/analyze/:walletAddress', async (req, res) => {
       };
     });
 
+    const uniquePools = [...new Set(positions.map(p => 
+      `${p.pool.token0.symbol || 'Unknown'}/${p.pool.token1.symbol || 'Unknown'}`
+    ))];
+
     res.json({
       success: true,
       data: {
         wallet: walletAddress,
+        hasPositions: true,
         positionsCount: positions.length,
         positions: formattedPositions,
         summary: {
           totalPositions: positions.length,
-          pools: [...new Set(positions.map(p => `${p.pool.token0.symbol}/${p.pool.token1.symbol}`))],
+          pools: uniquePools,
           lastUpdated: new Date().toISOString()
         }
       }
     });
 
   } catch (error) {
-    console.error('Error analyzing wallet:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to analyze wallet',
-      details: error.message
-    });
+    console.error('❌ Error analyzing wallet:', error);
+    
+    // Check if it's a Graph error
+    if (error.message.includes('GraphQL')) {
+      res.status(503).json({
+        success: false,
+        error: 'The Graph service is temporarily unavailable',
+        details: 'Please try again in a few moments'
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to analyze wallet',
+        details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      });
+    }
   }
 });
 
@@ -174,7 +231,6 @@ app.get('/api/positions/:walletAddress', async (req, res) => {
   console.log(`Getting positions for wallet: ${walletAddress}`);
   
   try {
-    // Directly analyze the wallet instead of calling localhost
     const positions = await analyzeWalletData(walletAddress);
     
     if (!positions || positions.length === 0) {
@@ -186,8 +242,8 @@ app.get('/api/positions/:walletAddress', async (req, res) => {
 
     const formattedPositions = positions.map(pos => ({
       id: pos.id,
-      pool: `${pos.pool.token0.symbol}/${pos.pool.token1.symbol}`,
-      feeTier: pos.pool.feeTier / 10000 + '%',
+      pool: `${pos.pool.token0.symbol || 'Unknown'}/${pos.pool.token1.symbol || 'Unknown'}`,
+      feeTier: (pos.pool.feeTier / 10000).toFixed(2) + '%',
       liquidity: pos.liquidity,
       range: {
         lower: pos.tickLower.tickIdx,
@@ -203,7 +259,8 @@ app.get('/api/positions/:walletAddress', async (req, res) => {
     console.error('Error getting positions:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to get positions'
+      error: 'Failed to get positions',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 });
@@ -212,7 +269,6 @@ app.get('/api/positions/:walletAddress', async (req, res) => {
 app.get('/api/pool-analysis', async (req, res) => {
   console.log('Pool analysis requested');
   try {
-    // Query top pools from The Graph
     const query = `
       query getTopPools {
         pools(first: 5, orderBy: totalValueLockedUSD, orderDirection: desc) {
@@ -235,7 +291,11 @@ app.get('/api/pool-analysis', async (req, res) => {
       query
     });
 
-    const pools = response.data.data.pools;
+    if (response.data.errors) {
+      throw new Error('GraphQL query failed');
+    }
+
+    const pools = response.data.data.pools || [];
 
     res.json({
       success: true,
@@ -243,7 +303,7 @@ app.get('/api/pool-analysis', async (req, res) => {
         topPools: pools.map(pool => ({
           id: pool.id,
           pair: `${pool.token0.symbol}/${pool.token1.symbol}`,
-          feeTier: pool.feeTier / 10000 + '%',
+          feeTier: (pool.feeTier / 10000).toFixed(2) + '%',
           tvl: parseFloat(pool.totalValueLockedUSD).toFixed(2),
           volume: parseFloat(pool.volumeUSD).toFixed(2),
           liquidity: pool.liquidity
@@ -266,11 +326,12 @@ app.get('/api/portfolio/:walletAddress', async (req, res) => {
   console.log(`Getting portfolio for wallet: ${walletAddress}`);
   
   try {
-    // Directly analyze the wallet instead of calling localhost
     const positions = await analyzeWalletData(walletAddress);
     
     const pools = positions.length > 0 
-      ? [...new Set(positions.map(p => `${p.pool.token0.symbol}/${p.pool.token1.symbol}`))]
+      ? [...new Set(positions.map(p => 
+          `${p.pool.token0.symbol || 'Unknown'}/${p.pool.token1.symbol || 'Unknown'}`
+        ))]
       : [];
     
     res.json({
@@ -292,7 +353,8 @@ app.get('/api/portfolio/:walletAddress', async (req, res) => {
     console.error('Error getting portfolio:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to get portfolio'
+      error: 'Failed to get portfolio',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 });
@@ -303,7 +365,6 @@ app.get('/api/portfolio-optimization/:walletAddress', async (req, res) => {
   console.log(`Optimizing portfolio for wallet: ${walletAddress}`);
   
   try {
-    // This would need complex analysis in production
     res.json({
       success: true,
       data: {
@@ -311,7 +372,7 @@ app.get('/api/portfolio-optimization/:walletAddress', async (req, res) => {
         recommendations: [
           {
             action: 'analyze',
-            message: 'Fetching your positions for optimization...'
+            message: 'Portfolio optimization coming soon...'
           }
         ],
         optimizedAllocation: {},
@@ -329,7 +390,35 @@ app.get('/api/portfolio-optimization/:walletAddress', async (req, res) => {
   }
 });
 
-// Backward compatibility endpoints (without wallet)
+// Test endpoint for The Graph
+app.get('/api/test-graph', async (req, res) => {
+  try {
+    const query = `
+      query {
+        factories(first: 1) {
+          id
+          poolCount
+        }
+      }
+    `;
+    
+    const response = await axios.post(UNISWAP_V3_SUBGRAPH, { query });
+    
+    res.json({
+      success: true,
+      message: 'The Graph is accessible',
+      data: response.data
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Cannot connect to The Graph',
+      details: error.message
+    });
+  }
+});
+
+// Backward compatibility endpoints
 app.get('/api/positions', (req, res) => {
   res.json({
     success: false,
@@ -366,7 +455,8 @@ app.get('*', (req, res) => {
       '/api/analyze/{walletAddress}',
       '/api/positions/{walletAddress}',
       '/api/portfolio/{walletAddress}',
-      '/api/pool-analysis'
+      '/api/pool-analysis',
+      '/api/test-graph'
     ]
   });
 });
@@ -385,6 +475,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   console.log('  GET /api/positions/{walletAddress}');
   console.log('  GET /api/portfolio/{walletAddress}');
   console.log('  GET /api/pool-analysis');
+  console.log('  GET /api/test-graph');
   console.log('=================================');
 });
 
