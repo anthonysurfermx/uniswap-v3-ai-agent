@@ -25,8 +25,8 @@ app.use(cors({
 
 app.use(express.json());
 
-// The Graph endpoint for Uniswap V3
-const UNISWAP_V3_SUBGRAPH = 'https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3';
+// The Graph endpoint for Uniswap V3 - Using Messari's public endpoint
+const UNISWAP_V3_SUBGRAPH = 'https://api.thegraph.com/subgraphs/name/messari/uniswap-v3-ethereum';
 
 // Logging mejorado
 app.use((req, res, next) => {
