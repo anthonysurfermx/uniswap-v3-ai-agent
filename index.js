@@ -6,13 +6,20 @@ const app = express();
 
 // Configuración mejorada de CORS
 app.use(cors({
-  origin: [
-    'http://localhost:8080',
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'https://uni-pulse-dash-rnrsge3ar-anthonysurfermxs-projects.vercel.app',
-    'https://uni-pulse-dash.vercel.app'
-  ],
+  origin: function (origin, callback) {
+    // Permite localhost y cualquier subdominio de vercel.app
+    const allowedOrigins = [
+      'http://localhost:8080',
+      'http://localhost:5173',
+      'http://localhost:3000'
+    ];
+    
+    if (!origin || allowedOrigins.includes(origin) || origin.includes('vercel.app')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 
@@ -48,56 +55,60 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Helper function to analyze wallet
+async function analyzeWalletData(walletAddress) {
+  const query = `
+    query getPositions($owner: String!) {
+      positions(where: { owner: $owner }) {
+        id
+        owner
+        pool {
+          id
+          token0 {
+            symbol
+            decimals
+          }
+          token1 {
+            symbol
+            decimals
+          }
+          feeTier
+          liquidity
+          sqrtPrice
+          tick
+        }
+        liquidity
+        depositedToken0
+        depositedToken1
+        withdrawnToken0
+        withdrawnToken1
+        collectedFeesToken0
+        collectedFeesToken1
+        tickLower {
+          tickIdx
+        }
+        tickUpper {
+          tickIdx
+        }
+      }
+    }
+  `;
+
+  const response = await axios.post(UNISWAP_V3_SUBGRAPH, {
+    query,
+    variables: { owner: walletAddress.toLowerCase() }
+  });
+
+  return response.data.data.positions || [];
+}
+
 // Analyze wallet - Main endpoint
 app.get('/api/analyze/:walletAddress', async (req, res) => {
   const { walletAddress } = req.params;
   console.log(`Analyzing wallet: ${walletAddress}`);
   
   try {
-    // Query The Graph for positions
-    const query = `
-      query getPositions($owner: String!) {
-        positions(where: { owner: $owner }) {
-          id
-          owner
-          pool {
-            id
-            token0 {
-              symbol
-              decimals
-            }
-            token1 {
-              symbol
-              decimals
-            }
-            feeTier
-            liquidity
-            sqrtPrice
-            tick
-          }
-          liquidity
-          depositedToken0
-          depositedToken1
-          withdrawnToken0
-          withdrawnToken1
-          collectedFeesToken0
-          collectedFeesToken1
-          tickLower {
-            tickIdx
-          }
-          tickUpper {
-            tickIdx
-          }
-        }
-      }
-    `;
-
-    const response = await axios.post(UNISWAP_V3_SUBGRAPH, {
-      query,
-      variables: { owner: walletAddress.toLowerCase() }
-    });
-
-    const positions = response.data.data.positions;
+    const positions = await analyzeWalletData(walletAddress);
 
     if (!positions || positions.length === 0) {
       return res.json({
@@ -111,9 +122,6 @@ app.get('/api/analyze/:walletAddress', async (req, res) => {
     }
 
     // Calculate totals and format data
-    let totalValue = 0;
-    let totalFees = 0;
-    
     const formattedPositions = positions.map(pos => {
       const fees0 = parseFloat(pos.collectedFeesToken0) || 0;
       const fees1 = parseFloat(pos.collectedFeesToken1) || 0;
@@ -166,12 +174,31 @@ app.get('/api/positions/:walletAddress', async (req, res) => {
   console.log(`Getting positions for wallet: ${walletAddress}`);
   
   try {
-    // Redirect to analyze endpoint for now
-    const analyzeResponse = await axios.get(
-      `http://localhost:${PORT}/api/analyze/${walletAddress}`
-    );
+    // Directly analyze the wallet instead of calling localhost
+    const positions = await analyzeWalletData(walletAddress);
     
-    res.json(analyzeResponse.data);
+    if (!positions || positions.length === 0) {
+      return res.json({
+        success: true,
+        data: []
+      });
+    }
+
+    const formattedPositions = positions.map(pos => ({
+      id: pos.id,
+      pool: `${pos.pool.token0.symbol}/${pos.pool.token1.symbol}`,
+      feeTier: pos.pool.feeTier / 10000 + '%',
+      liquidity: pos.liquidity,
+      range: {
+        lower: pos.tickLower.tickIdx,
+        upper: pos.tickUpper.tickIdx
+      }
+    }));
+
+    res.json({
+      success: true,
+      data: formattedPositions
+    });
   } catch (error) {
     console.error('Error getting positions:', error);
     res.status(500).json({
@@ -239,18 +266,21 @@ app.get('/api/portfolio/:walletAddress', async (req, res) => {
   console.log(`Getting portfolio for wallet: ${walletAddress}`);
   
   try {
-    const analyzeResponse = await axios.get(
-      `http://localhost:${PORT}/api/analyze/${walletAddress}`
-    );
+    // Directly analyze the wallet instead of calling localhost
+    const positions = await analyzeWalletData(walletAddress);
     
-    const data = analyzeResponse.data.data;
+    const pools = positions.length > 0 
+      ? [...new Set(positions.map(p => `${p.pool.token0.symbol}/${p.pool.token1.symbol}`))]
+      : [];
     
     res.json({
       success: true,
       data: {
         wallet: walletAddress,
-        totalPositions: data.positionsCount || 0,
-        pools: data.summary?.pools || [],
+        totalPositions: positions.length,
+        pools: pools,
+        totalValue: 0, // Would need price data
+        totalFees: 0, // Would need to calculate
         performance: {
           day: 0, // Would need historical data
           week: 0,
@@ -284,6 +314,9 @@ app.get('/api/portfolio-optimization/:walletAddress', async (req, res) => {
             message: 'Fetching your positions for optimization...'
           }
         ],
+        optimizedAllocation: {},
+        expectedAPY: 0,
+        riskScore: 'N/A',
         timestamp: new Date().toISOString()
       }
     });
