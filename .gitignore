@@ -24,3 +24,4 @@ Thumbs.db
 # Archivos de respaldo
 *.backup
 *.bak
+.vercel
