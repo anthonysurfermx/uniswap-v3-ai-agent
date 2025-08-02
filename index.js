@@ -18,6 +18,9 @@ app.use(cors({
 
 app.use(express.json());
 
+// The Graph endpoint for Uniswap V3
+const UNISWAP_V3_SUBGRAPH = 'https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3';
+
 // Logging mejorado
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
@@ -29,13 +32,13 @@ app.get('/', (req, res) => {
   console.log('Health check requested');
   res.json({
     message: "Uniswap V3 AI Agent API",
-    version: "2.0.0",
+    version: "3.0.0",
     endpoints: [
       "/health",
-      "/api/positions",
-      "/api/portfolio",
-      "/api/portfolio-optimization",
-      "/api/pool-analysis"
+      "/api/positions/:walletAddress",
+      "/api/portfolio/:walletAddress",
+      "/api/pool-analysis",
+      "/api/analyze/:walletAddress"
     ]
   });
 });
@@ -45,158 +48,277 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Test endpoint
-app.get('/api/test', (req, res) => {
-  console.log('Test endpoint hit');
-  res.json({ 
-    success: true, 
-    message: 'API is working!',
-    timestamp: new Date().toISOString()
-  });
+// Analyze wallet - Main endpoint
+app.get('/api/analyze/:walletAddress', async (req, res) => {
+  const { walletAddress } = req.params;
+  console.log(`Analyzing wallet: ${walletAddress}`);
+  
+  try {
+    // Query The Graph for positions
+    const query = `
+      query getPositions($owner: String!) {
+        positions(where: { owner: $owner }) {
+          id
+          owner
+          pool {
+            id
+            token0 {
+              symbol
+              decimals
+            }
+            token1 {
+              symbol
+              decimals
+            }
+            feeTier
+            liquidity
+            sqrtPrice
+            tick
+          }
+          liquidity
+          depositedToken0
+          depositedToken1
+          withdrawnToken0
+          withdrawnToken1
+          collectedFeesToken0
+          collectedFeesToken1
+          tickLower {
+            tickIdx
+          }
+          tickUpper {
+            tickIdx
+          }
+        }
+      }
+    `;
+
+    const response = await axios.post(UNISWAP_V3_SUBGRAPH, {
+      query,
+      variables: { owner: walletAddress.toLowerCase() }
+    });
+
+    const positions = response.data.data.positions;
+
+    if (!positions || positions.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          wallet: walletAddress,
+          hasPositions: false,
+          message: "No Uniswap V3 positions found for this wallet"
+        }
+      });
+    }
+
+    // Calculate totals and format data
+    let totalValue = 0;
+    let totalFees = 0;
+    
+    const formattedPositions = positions.map(pos => {
+      const fees0 = parseFloat(pos.collectedFeesToken0) || 0;
+      const fees1 = parseFloat(pos.collectedFeesToken1) || 0;
+      const totalFees = fees0 + fees1; // Simplified calculation
+      
+      return {
+        id: pos.id,
+        pool: `${pos.pool.token0.symbol}/${pos.pool.token1.symbol}`,
+        feeTier: pos.pool.feeTier / 10000 + '%',
+        liquidity: pos.liquidity,
+        range: {
+          lower: pos.tickLower.tickIdx,
+          upper: pos.tickUpper.tickIdx
+        },
+        fees: {
+          token0: fees0.toFixed(4),
+          token1: fees1.toFixed(4),
+          total: totalFees.toFixed(2)
+        }
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        wallet: walletAddress,
+        positionsCount: positions.length,
+        positions: formattedPositions,
+        summary: {
+          totalPositions: positions.length,
+          pools: [...new Set(positions.map(p => `${p.pool.token0.symbol}/${p.pool.token1.symbol}`))],
+          lastUpdated: new Date().toISOString()
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error analyzing wallet:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to analyze wallet',
+      details: error.message
+    });
+  }
 });
 
-// Pool analysis endpoint
+// Get positions for a specific wallet
+app.get('/api/positions/:walletAddress', async (req, res) => {
+  const { walletAddress } = req.params;
+  console.log(`Getting positions for wallet: ${walletAddress}`);
+  
+  try {
+    // Redirect to analyze endpoint for now
+    const analyzeResponse = await axios.get(
+      `http://localhost:${PORT}/api/analyze/${walletAddress}`
+    );
+    
+    res.json(analyzeResponse.data);
+  } catch (error) {
+    console.error('Error getting positions:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get positions'
+    });
+  }
+});
+
+// Pool analysis endpoint (general, not wallet-specific)
 app.get('/api/pool-analysis', async (req, res) => {
   console.log('Pool analysis requested');
   try {
-    const mockData = {
+    // Query top pools from The Graph
+    const query = `
+      query getTopPools {
+        pools(first: 5, orderBy: totalValueLockedUSD, orderDirection: desc) {
+          id
+          token0 {
+            symbol
+          }
+          token1 {
+            symbol
+          }
+          feeTier
+          liquidity
+          totalValueLockedUSD
+          volumeUSD
+        }
+      }
+    `;
+
+    const response = await axios.post(UNISWAP_V3_SUBGRAPH, {
+      query
+    });
+
+    const pools = response.data.data.pools;
+
+    res.json({
       success: true,
       data: {
-        poolId: "0x8ad599c3a0ff1de082011efddc58f1908eb6e6d8",
-        token0: "USDC",
-        token1: "WETH",
-        tvl: 285000000,
-        volume24h: 45000000,
-        apy: 12.5,
-        historicalData: [
-          { date: "2024-01-01", tvl: 250000000, volume: 40000000 },
-          { date: "2024-01-02", tvl: 255000000, volume: 42000000 },
-          { date: "2024-01-03", tvl: 260000000, volume: 44000000 },
-          { date: "2024-01-04", tvl: 265000000, volume: 43000000 },
-          { date: "2024-01-05", tvl: 270000000, volume: 45000000 }
-        ]
-      },
-      timestamp: new Date().toISOString()
-    };
-    
-    console.log('Sending pool analysis data');
-    res.json(mockData);
+        topPools: pools.map(pool => ({
+          id: pool.id,
+          pair: `${pool.token0.symbol}/${pool.token1.symbol}`,
+          feeTier: pool.feeTier / 10000 + '%',
+          tvl: parseFloat(pool.totalValueLockedUSD).toFixed(2),
+          volume: parseFloat(pool.volumeUSD).toFixed(2),
+          liquidity: pool.liquidity
+        })),
+        timestamp: new Date().toISOString()
+      }
+    });
   } catch (error) {
     console.error('Error in pool analysis:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Server error'
+      error: 'Failed to analyze pools'
     });
   }
 });
 
-// Positions endpoint
-app.get('/api/positions', async (req, res) => {
-  console.log('Positions requested');
+// Portfolio endpoint for wallet
+app.get('/api/portfolio/:walletAddress', async (req, res) => {
+  const { walletAddress } = req.params;
+  console.log(`Getting portfolio for wallet: ${walletAddress}`);
+  
   try {
-    const mockPositions = {
-      success: true,
-      data: [
-        {
-          id: "1",
-          pool: "USDC/WETH",
-          liquidity: "1000000",
-          range: "0.0005 - 0.0008",
-          fees: "250.50",
-          value: "50000"
-        },
-        {
-          id: "2",
-          pool: "DAI/USDC",
-          liquidity: "500000",
-          range: "0.99 - 1.01",
-          fees: "125.25",
-          value: "25000"
-        }
-      ],
-      timestamp: new Date().toISOString()
-    };
+    const analyzeResponse = await axios.get(
+      `http://localhost:${PORT}/api/analyze/${walletAddress}`
+    );
     
-    console.log('Sending positions data');
-    res.json(mockPositions);
-  } catch (error) {
-    console.error('Error in positions:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Server error'
-    });
-  }
-});
-
-// Portfolio endpoint
-app.get('/api/portfolio', async (req, res) => {
-  console.log('Portfolio requested');
-  try {
-    const mockPortfolio = {
+    const data = analyzeResponse.data.data;
+    
+    res.json({
       success: true,
       data: {
-        totalValue: 75000,
-        totalFees: 375.75,
-        positions: 2,
+        wallet: walletAddress,
+        totalPositions: data.positionsCount || 0,
+        pools: data.summary?.pools || [],
         performance: {
-          day: 2.5,
-          week: 5.8,
-          month: 12.3
+          day: 0, // Would need historical data
+          week: 0,
+          month: 0
         }
-      },
-      timestamp: new Date().toISOString()
-    };
-    
-    console.log('Sending portfolio data');
-    res.json(mockPortfolio);
+      }
+    });
   } catch (error) {
-    console.error('Error in portfolio:', error);
+    console.error('Error getting portfolio:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Server error'
+      error: 'Failed to get portfolio'
     });
   }
 });
 
-// Portfolio optimization endpoint (el que faltaba)
-app.get('/api/portfolio-optimization', async (req, res) => {
-  console.log('Portfolio optimization requested');
+// Portfolio optimization endpoint
+app.get('/api/portfolio-optimization/:walletAddress', async (req, res) => {
+  const { walletAddress } = req.params;
+  console.log(`Optimizing portfolio for wallet: ${walletAddress}`);
+  
   try {
-    const mockData = {
+    // This would need complex analysis in production
+    res.json({
       success: true,
       data: {
-        optimizedAllocation: {
-          'USDC/WETH': 40,
-          'DAI/USDC': 30,
-          'WETH/USDT': 30
-        },
-        expectedAPY: 15.5,
-        riskScore: 'Medium',
+        wallet: walletAddress,
         recommendations: [
           {
-            action: 'increase',
-            pool: 'USDC/WETH',
-            reason: 'Higher APY with stable volume'
-          },
-          {
-            action: 'decrease',
-            pool: 'DAI/USDC',
-            reason: 'Lower returns in stable pairs'
+            action: 'analyze',
+            message: 'Fetching your positions for optimization...'
           }
-        ]
-      },
-      timestamp: new Date().toISOString()
-    };
-    
-    console.log('Sending portfolio optimization data');
-    res.json(mockData);
+        ],
+        timestamp: new Date().toISOString()
+      }
+    });
   } catch (error) {
     console.error('Error in portfolio optimization:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Server error'
+      error: 'Failed to optimize portfolio'
     });
   }
+});
+
+// Backward compatibility endpoints (without wallet)
+app.get('/api/positions', (req, res) => {
+  res.json({
+    success: false,
+    error: 'Wallet address required',
+    message: 'Please use /api/positions/{walletAddress}'
+  });
+});
+
+app.get('/api/portfolio', (req, res) => {
+  res.json({
+    success: false,
+    error: 'Wallet address required',
+    message: 'Please use /api/portfolio/{walletAddress}'
+  });
+});
+
+app.get('/api/portfolio-optimization', (req, res) => {
+  res.json({
+    success: false,
+    error: 'Wallet address required',
+    message: 'Please use /api/portfolio-optimization/{walletAddress}'
+  });
 });
 
 // Catch all route
@@ -208,11 +330,10 @@ app.get('*', (req, res) => {
     availableRoutes: [
       '/',
       '/health',
-      '/api/test',
-      '/api/pool-analysis',
-      '/api/positions',
-      '/api/portfolio',
-      '/api/portfolio-optimization'
+      '/api/analyze/{walletAddress}',
+      '/api/positions/{walletAddress}',
+      '/api/portfolio/{walletAddress}',
+      '/api/pool-analysis'
     ]
   });
 });
@@ -227,13 +348,10 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`📅 Started at: ${new Date().toISOString()}`);
   console.log('=================================');
   console.log('Available endpoints:');
-  console.log('  GET /');
-  console.log('  GET /health');
-  console.log('  GET /api/test');
+  console.log('  GET /api/analyze/{walletAddress}');
+  console.log('  GET /api/positions/{walletAddress}');
+  console.log('  GET /api/portfolio/{walletAddress}');
   console.log('  GET /api/pool-analysis');
-  console.log('  GET /api/positions');
-  console.log('  GET /api/portfolio');
-  console.log('  GET /api/portfolio-optimization');
   console.log('=================================');
 });
 
