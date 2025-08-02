@@ -155,5 +155,5 @@ app.get('/', (req, res) => {
 // Start server - IMPORTANTE: Solo un app.listen al final
 const PORT = process.env.PORT || 5679;
 app.listen(PORT, () => {
-  console.log(`🦄 Improved API Server on port ${PORT}`);
+  console.log(`🚀 CORRECT SERVER RUNNING - improved-server.js on port ${PORT}`);
 });
