@@ -63,10 +63,40 @@ app.get('/api/positions', async (req, res) => {
       error: 'Server error'
     });
   }
+}const PORT = process.env.PORT || 5679;
+
+app.get('/api/pool-analysis', async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      data: {
+        topPools: [
+          {
+            id: "1",
+            pair: "WETH/USDC",
+            tvl: "$1.2B",
+            volume24h: "$45.3M",
+            apy: "12.5%"
+          }
+        ],
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+// Root route
+app.get('/', (req, res) => {
+  res.json({
+    message: "Uniswap V3 AI Agent API",
+    version: "2.0.0",
+    endpoints: ['/health', '/api/positions', '/api/portfolio', '/api/pool-analysis']
+  });
 });
 
-app.listen(5679, () => {
-  console.log('🦄 Improved API Server on port 5679');
+app.listen(PORT, () => {
+  console.log(`🦄 Improved API Server on port ${PORT}`);
 });
 
 // Add portfolio endpoint
