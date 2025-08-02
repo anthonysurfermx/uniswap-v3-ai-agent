@@ -1,1 +1,1 @@
-web: node improved-server.js
+web: node index.js
