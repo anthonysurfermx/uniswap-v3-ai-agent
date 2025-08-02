@@ -63,7 +63,8 @@ app.get('/api/positions', async (req, res) => {
       error: 'Server error'
     });
   }
-}const PORT = process.env.PORT || 5679;
+}
+const PORT = process.env.PORT || 5679;
 
 app.get('/api/pool-analysis', async (req, res) => {
   try {
