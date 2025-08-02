@@ -1,159 +1,263 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+
 const app = express();
 
+// Configuración mejorada de CORS
 app.use(cors({
-  origin: ['http://localhost:8080', 'https://uni-pulse-dash-rnrsge3ar-anthonysurfermxs-projects.vercel.app', 'http://localhost:5173', 'http://localhost:3000'],
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type'],
+  origin: [
+    'http://localhost:8080',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://uni-pulse-dash-rnrsge3ar-anthonysurfermxs-projects.vercel.app',
+    'https://uni-pulse-dash.vercel.app'
+  ],
   credentials: true
 }));
 
 app.use(express.json());
 
-const MORALIS_API_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjNmMzE1NDdkLWViOWItNDA4OC1hMzA5LThkMDU4OGE3OTBmNiIsIm9yZ0lkIjoiNDYxNzQ4IiwidXNlcklkIjoiNDc1MDQ0IiwidHlwZUlkIjoiMzRiNTM3NmItMGMzNi00ZTUyLWFhMDctOTAzNDg5ZWJkODc2IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NTM2MTg0NjIsImV4cCI6NDkwOTM3ODQ2Mn0.7l5ccJ_rq0tlLaDwSXOkTHlxNcoaQUcHmSqE-vQevqY';
-const MORALIS_BASE_URL = 'https://deep-index.moralis.io/api/v2.2';
+// Logging mejorado
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
 
-// Validation function
-const isValidEthereumAddress = (address) => {
-  return /^0x[a-fA-F0-9]{40}$/.test(address);
-};
-
-// Enhanced health check
-app.get('/health', (req, res) => {
+// Health check endpoint
+app.get('/', (req, res) => {
+  console.log('Health check requested');
   res.json({
-    status: 'healthy',
-    version: '2.0.0',
-    timestamp: new Date().toISOString(),
-    endpoints: ['/api/positions', '/api/portfolio', '/api/pool-analysis', '/health']
+    message: "Uniswap V3 AI Agent API",
+    version: "2.0.0",
+    endpoints: [
+      "/health",
+      "/api/positions",
+      "/api/portfolio",
+      "/api/portfolio-optimization",
+      "/api/pool-analysis"
+    ]
   });
 });
 
-// Enhanced API endpoint
-app.get('/api/positions', async (req, res) => {
+// Health endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// Test endpoint
+app.get('/api/test', (req, res) => {
+  console.log('Test endpoint hit');
+  res.json({ 
+    success: true, 
+    message: 'API is working!',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Pool analysis endpoint
+app.get('/api/pool-analysis', async (req, res) => {
+  console.log('Pool analysis requested');
   try {
-    const { wallet } = req.query;
-    
-    if (!wallet) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing wallet parameter'
-      });
-    }
-
-    if (!isValidEthereumAddress(wallet)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid wallet address'
-      });
-    }
-
-    console.log(`📡 Enhanced API: /api/positions?wallet=${wallet}`);
-    
-    res.json({
+    const mockData = {
       success: true,
-      message: 'Enhanced API with validation working!',
-      wallet: wallet,
-      timestamp: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Server error'
-    });
-  }
-}); // IMPORTANTE: Este cierre faltaba
-
-// Add portfolio endpoint
-app.get('/api/portfolio', async (req, res) => {
-  try {
-    const { wallet } = req.query;
-    
-    if (!wallet) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing wallet parameter'
-      });
-    }
-
-    console.log('📊 Portfolio request for:', wallet);
-    
-    // Mock portfolio data for now
-    const portfolioData = {
-      success: true,
-      summary: {
-        totalValueLocked: "8450.23",
-        totalUnclaimedFees: "127.50", 
-        weightedApr: "15.4",
-        positionsCount: 2,
-        inRangeCount: 1,
-        outOfRangeCount: 1,
-        healthScore: "75.0"
+      data: {
+        poolId: "0x8ad599c3a0ff1de082011efddc58f1908eb6e6d8",
+        token0: "USDC",
+        token1: "WETH",
+        tvl: 285000000,
+        volume24h: 45000000,
+        apy: 12.5,
+        historicalData: [
+          { date: "2024-01-01", tvl: 250000000, volume: 40000000 },
+          { date: "2024-01-02", tvl: 255000000, volume: 42000000 },
+          { date: "2024-01-03", tvl: 260000000, volume: 44000000 },
+          { date: "2024-01-04", tvl: 265000000, volume: 43000000 },
+          { date: "2024-01-05", tvl: 270000000, volume: 45000000 }
+        ]
       },
       timestamp: new Date().toISOString()
     };
     
-    res.json(portfolioData);
-    
+    console.log('Sending pool analysis data');
+    res.json(mockData);
   } catch (error) {
-    console.error('Portfolio error:', error);
+    console.error('Error in pool analysis:', error);
     res.status(500).json({
       success: false,
-      error: 'Server error'
+      error: error.message || 'Server error'
     });
   }
 });
 
-// Add pool analysis endpoint
-app.get('/api/pool-analysis', async (req, res) => {
+// Positions endpoint
+app.get('/api/positions', async (req, res) => {
+  console.log('Positions requested');
   try {
-    res.json({
+    const mockPositions = {
+      success: true,
+      data: [
+        {
+          id: "1",
+          pool: "USDC/WETH",
+          liquidity: "1000000",
+          range: "0.0005 - 0.0008",
+          fees: "250.50",
+          value: "50000"
+        },
+        {
+          id: "2",
+          pool: "DAI/USDC",
+          liquidity: "500000",
+          range: "0.99 - 1.01",
+          fees: "125.25",
+          value: "25000"
+        }
+      ],
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('Sending positions data');
+    res.json(mockPositions);
+  } catch (error) {
+    console.error('Error in positions:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+// Portfolio endpoint
+app.get('/api/portfolio', async (req, res) => {
+  console.log('Portfolio requested');
+  try {
+    const mockPortfolio = {
       success: true,
       data: {
-        topPools: [
-          {
-            id: "1",
-            pair: "WETH/USDC",
-            tvl: "$1.2B",
-            volume24h: "$45.3M",
-            apy: "12.5%"
-          },
-          {
-            id: "2",
-            pair: "USDC/USDT",
-            tvl: "$890M",
-            volume24h: "$23.1M",
-            apy: "8.3%"
-          },
-          {
-            id: "3",
-            pair: "WBTC/WETH",
-            tvl: "$756M",
-            volume24h: "$34.2M",
-            apy: "10.2%"
-          }
-        ],
-        timestamp: new Date().toISOString()
-      }
-    });
+        totalValue: 75000,
+        totalFees: 375.75,
+        positions: 2,
+        performance: {
+          day: 2.5,
+          week: 5.8,
+          month: 12.3
+        }
+      },
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('Sending portfolio data');
+    res.json(mockPortfolio);
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('Error in portfolio:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
   }
 });
 
-// Root route
-app.get('/', (req, res) => {
-  res.json({
-    message: "Uniswap V3 AI Agent API",
-    version: "2.0.0",
-    endpoints: ['/health', '/api/positions', '/api/portfolio', '/api/pool-analysis']
+// Portfolio optimization endpoint (el que faltaba)
+app.get('/api/portfolio-optimization', async (req, res) => {
+  console.log('Portfolio optimization requested');
+  try {
+    const mockData = {
+      success: true,
+      data: {
+        optimizedAllocation: {
+          'USDC/WETH': 40,
+          'DAI/USDC': 30,
+          'WETH/USDT': 30
+        },
+        expectedAPY: 15.5,
+        riskScore: 'Medium',
+        recommendations: [
+          {
+            action: 'increase',
+            pool: 'USDC/WETH',
+            reason: 'Higher APY with stable volume'
+          },
+          {
+            action: 'decrease',
+            pool: 'DAI/USDC',
+            reason: 'Lower returns in stable pairs'
+          }
+        ]
+      },
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('Sending portfolio optimization data');
+    res.json(mockData);
+  } catch (error) {
+    console.error('Error in portfolio optimization:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
+  }
+});
+
+// Catch all route
+app.get('*', (req, res) => {
+  console.log(`Unknown route requested: ${req.path}`);
+  res.status(404).json({
+    success: false,
+    error: 'Route not found',
+    availableRoutes: [
+      '/',
+      '/health',
+      '/api/test',
+      '/api/pool-analysis',
+      '/api/positions',
+      '/api/portfolio',
+      '/api/portfolio-optimization'
+    ]
   });
 });
 
-// Start server - IMPORTANTE: Solo un app.listen al final
+// Puerto dinámico para Railway
 const PORT = process.env.PORT || 5679;
-app.listen(PORT, () => {
-  console.log(`🚀 CORRECT SERVER RUNNING - improved-server.js on port ${PORT}`);
+
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log('=================================');
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📅 Started at: ${new Date().toISOString()}`);
+  console.log('=================================');
+  console.log('Available endpoints:');
+  console.log('  GET /');
+  console.log('  GET /health');
+  console.log('  GET /api/test');
+  console.log('  GET /api/pool-analysis');
+  console.log('  GET /api/positions');
+  console.log('  GET /api/portfolio');
+  console.log('  GET /api/portfolio-optimization');
+  console.log('=================================');
+});
+
+// Manejo de errores
+server.on('error', (error) => {
+  console.error('Server error:', error);
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use`);
+  }
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
 });
