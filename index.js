@@ -255,13 +255,29 @@ function parseUniswapV3Metadata(nft) {
         ? JSON.parse(nft.metadata) 
         : nft.metadata;
       
+      // Extraer información del nombre que contiene el pool y fee
+      let poolInfo = 'Unknown Pool';
+      let feeTier = 'Unknown';
+      let tickRange = { min: 'N/A', max: 'N/A' };
+      
+      if (metadata.name) {
+        // Ejemplo: "Uniswap - 0.3% - sENA/ENA - MIN<>MAX"
+        const nameMatch = metadata.name.match(/Uniswap\s*-\s*([\d.]+%)\s*-\s*([^-]+)\s*-\s*(.+)/);
+        if (nameMatch) {
+          feeTier = nameMatch[1];
+          poolInfo = nameMatch[2].trim();
+          tickRange.raw = nameMatch[3].trim();
+        }
+      }
+      
       return {
         tokenId: nft.token_id,
         name: metadata.name || `Position #${nft.token_id}`,
         description: metadata.description || '',
         image: metadata.image || '',
-        // Intentar extraer información de la descripción
-        pool: extractPoolFromDescription(metadata.description)
+        pool: poolInfo,
+        feeTier: feeTier,
+        tickRange: tickRange
       };
     }
   } catch (error) {
@@ -271,21 +287,10 @@ function parseUniswapV3Metadata(nft) {
   return {
     tokenId: nft.token_id,
     name: `Position #${nft.token_id}`,
-    pool: 'Unknown Pool'
+    pool: 'Unknown Pool',
+    feeTier: 'Unknown',
+    tickRange: { min: 'N/A', max: 'N/A' }
   };
-}
-
-// Helper para extraer información del pool de la descripción
-function extractPoolFromDescription(description) {
-  if (!description) return 'Unknown Pool';
-  
-  // Buscar patrones como "USDC/WETH" o "WETH-USDC"
-  const poolMatch = description.match(/([A-Z]+)[\/-]([A-Z]+)/);
-  if (poolMatch) {
-    return `${poolMatch[1]}/${poolMatch[2]}`;
-  }
-  
-  return 'Unknown Pool';
 }
 
 // ==========================================
@@ -329,12 +334,15 @@ app.get('/api/analyze/:walletAddress', async (req, res) => {
         id: nft.token_id,
         name: metadata.name,
         pool: metadata.pool,
+        feeTier: metadata.feeTier,
+        tickRange: metadata.tickRange,
         image: metadata.image,
         contractAddress: nft.token_address,
         blockNumber: nft.block_number,
         // Datos simulados hasta tener el ABI completo
         liquidity: Math.floor(Math.random() * 100000) + 10000,
-        fees: Math.floor(Math.random() * 1000) + 100
+        fees: Math.floor(Math.random() * 1000) + 100,
+        value: Math.floor(Math.random() * 50000) + 5000
       };
     });
     
@@ -424,11 +432,12 @@ app.get('/api/positions/:walletAddress', async (req, res) => {
       return {
         id: nft.token_id,
         pool: metadata.pool,
-        feeTier: '0.30%', // Necesitaríamos el ABI para obtener esto
+        feeTier: metadata.feeTier,
         liquidity: Math.floor(Math.random() * 100000) + 10000,
         range: {
-          lower: -887220,
-          upper: 887220
+          lower: metadata.tickRange.min,
+          upper: metadata.tickRange.max,
+          raw: metadata.tickRange.raw || 'N/A'
         },
         inRange: Math.random() > 0.5
       };
